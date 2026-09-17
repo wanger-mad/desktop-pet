@@ -86,7 +86,13 @@ function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => vo
 export function App() {
   const [state, setState] = useState<PetState | null>(null);
   const settingsWindow = new URLSearchParams(location.search).has("settings");
-  useEffect(() => { invoke<PetState>("get_state").then(setState); }, []);
+  useEffect(() => {
+    const refresh = () => invoke<PetState>("get_state").then(setState);
+    refresh();
+    if (settingsWindow) return;
+    window.addEventListener("resize", refresh);
+    return () => window.removeEventListener("resize", refresh);
+  }, [settingsWindow]);
   if (!state) return <div class="loading">正在唤醒小团子…</div>;
   return settingsWindow ? <SettingsPanel state={state} onState={setState}/> : <Pet state={state} onState={setState}/>;
 }
