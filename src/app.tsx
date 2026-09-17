@@ -35,18 +35,11 @@ function SettingsPanel({ state, onState }: { state: PetState; onState: (s: PetSt
 
 function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const [bubble, setBubble] = useState("我在这儿。");
   const [pressed, setPressed] = useState(false);
-  const [blink, setBlink] = useState(false);
   const drag = useRef({ x: 0, y: 0, started: false });
   const size = state.settings.size;
-
-  useEffect(() => {
-    let timer = window.setTimeout(() => setBlink(true), 1800 + Math.random() * 2800);
-    let reset = 0;
-    if (blink) reset = window.setTimeout(() => setBlink(false), 150);
-    return () => { clearTimeout(timer); clearTimeout(reset); };
-  }, [blink]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -54,21 +47,21 @@ function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => vo
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
     const ctx = canvas.getContext("2d")!;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, size, size);
-    const img = new Image();
-    img.onload = () => {
-      const bob = pressed ? size * .035 : 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const draw = (img: HTMLImageElement) => {
       ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(img, size * .08, size * (.09 + bob), size * .84, size * .84);
-      if (blink) {
-        ctx.strokeStyle = "#493c39"; ctx.lineWidth = Math.max(2, size / 90); ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(size*.38,size*.50+bob); ctx.lineTo(size*.45,size*.50+bob); ctx.moveTo(size*.56,size*.50+bob); ctx.lineTo(size*.63,size*.50+bob); ctx.stroke();
-      }
+      ctx.drawImage(img, size * .08, size * .09, size * .84, size * .84);
     };
     const asset = state.mood === "happy" ? "happy" : state.mood === "sleepy" ? "sleepy" : state.mood === "annoyed" ? "mad" : "normal_idle";
+    if (imageRef.current?.dataset.asset === asset && imageRef.current.complete) {
+      draw(imageRef.current);
+      return;
+    }
+    const img = new Image();
+    img.dataset.asset = asset;
+    img.onload = () => { imageRef.current = img; draw(img); };
     img.src = `/pet/${asset}.webp`;
-  }, [size, pressed, blink, state.mood]);
+  }, [size, state.mood]);
 
   const interact = async (kind: "head" | "belly" | "tap") => {
     const next = await invoke<PetState>("interact", { kind });
@@ -81,8 +74,9 @@ function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => vo
     {state.settings.showBubble && <div class="bubble">{bubble}</div>}
     <canvas ref={canvasRef} class={pressed ? "pressed" : ""}
       onPointerDown={e => { setPressed(true); drag.current = { x: e.clientX, y: e.clientY, started: false }; e.currentTarget.setPointerCapture(e.pointerId); }}
-      onPointerMove={async e => { if (!pressed || drag.current.started) return; if (Math.hypot(e.clientX-drag.current.x,e.clientY-drag.current.y)>8) { drag.current.started = true; await getCurrentWindow().startDragging(); } }}
+      onPointerMove={async e => { if (!pressed || drag.current.started) return; if (Math.hypot(e.clientX-drag.current.x,e.clientY-drag.current.y)>8) { drag.current.started = true; setPressed(false); await getCurrentWindow().startDragging(); } }}
       onPointerUp={e => { setPressed(false); if (!drag.current.started) interact(e.clientY < size*.52 ? "head" : e.clientY > size*.66 ? "belly" : "tap"); }}
+      onPointerCancel={() => { setPressed(false); drag.current.started = false; }}
     />
     <button class="pet-action settings" title="设置" onClick={() => invoke("open_settings")}><Settings2 size={16}/></button>
     <button class="pet-action passthrough" title={state.settings.clickThrough ? "关闭点击穿透" : "开启点击穿透"} onClick={() => invoke("update_settings", { patch: { clickThrough: !state.settings.clickThrough } }).then(s => onState(s as PetState))}>{state.settings.clickThrough ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
