@@ -6,6 +6,20 @@ export interface PetSettings {
   clickThrough: boolean;
   alwaysOnTop: boolean;
   autoStart: boolean;
+  focusMinutes: number;
+  shortBreakMinutes: number;
+  longBreakMinutes: number;
+  longBreakEvery: number;
+  pomodoroAutoStart: boolean;
+  pomodoroBubble: boolean;
+}
+
+export interface PomodoroState {
+  phase: "idle" | "focus" | "shortBreak" | "longBreak" | "paused" | "completed";
+  running: boolean;
+  remainingSeconds: number;
+  round: number;
+  totalCompleted: number;
 }
 
 export interface PetState {
@@ -17,4 +31,5 @@ export interface PetState {
   interactions: number;
   mood: Mood;
   settings: PetSettings;
+  pomodoro: PomodoroState;
 }

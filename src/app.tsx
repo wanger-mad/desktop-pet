@@ -11,10 +11,23 @@ const lines = {
   annoyed: ["慢一点嘛。", "我需要一点安静。", "先让我缓一缓。"]
 };
 
+const pomodoroLabel: Record<string, string> = { focus: "专注中", shortBreak: "短休息", longBreak: "长休息", paused: "已暂停", completed: "已完成", idle: "" };
+const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+
 function SettingsPanel({ state, onState }: { state: PetState; onState: (s: PetState) => void }) {
   const update = async (patch: Partial<PetSettings>) => onState(await invoke<PetState>("update_settings", { patch }));
+  const pomodoro = async (action: string) => onState(await invoke<PetState>("pomodoro_action", { action }));
+  const numberSetting = (key: keyof PetSettings, value: string) => update({ [key]: Number(value) } as Partial<PetSettings>);
   return <main class="settings-shell">
     <header><div><span class="eyebrow">LOCAL COMPANION</span><h1>小团子设置</h1></div><button class="icon-button" title="关闭设置" onClick={() => getCurrentWindow().hide()}><X size={18}/></button></header>
+    <section class="setting-section">
+      <h2>番茄钟</h2>
+      <div class="pomodoro-status"><strong>{pomodoroLabel[state.pomodoro.phase] || "待开始"}</strong><b>{state.pomodoro.phase === "idle" ? "25:00" : formatTime(state.pomodoro.remainingSeconds)}</b><span>第 {state.pomodoro.round} 轮 · 已完成 {state.pomodoro.totalCompleted} 次</span></div>
+      <div class="pomodoro-actions"><button class="primary" onClick={() => pomodoro(state.pomodoro.running ? "pause" : "start")}>{state.pomodoro.running ? "暂停" : "开始"}</button><button class="secondary" onClick={() => pomodoro("reset")}><RotateCcw size={16}/>重置</button></div>
+      <div class="timer-grid"><label>专注（分钟）<input type="number" min="1" max="120" value={state.settings.focusMinutes} onChange={e => numberSetting("focusMinutes", e.currentTarget.value)}/></label><label>短休息（分钟）<input type="number" min="1" max="60" value={state.settings.shortBreakMinutes} onChange={e => numberSetting("shortBreakMinutes", e.currentTarget.value)}/></label><label>长休息（分钟）<input type="number" min="1" max="60" value={state.settings.longBreakMinutes} onChange={e => numberSetting("longBreakMinutes", e.currentTarget.value)}/></label><label>长休息间隔<input type="number" min="1" max="10" value={state.settings.longBreakEvery} onChange={e => numberSetting("longBreakEvery", e.currentTarget.value)}/></label></div>
+      <label class="setting-row"><div><strong>自动开始下一段</strong><span>结束后自动进入下一阶段</span></div><input type="checkbox" checked={state.settings.pomodoroAutoStart} onChange={e => update({ pomodoroAutoStart: e.currentTarget.checked })}/></label>
+      <label class="setting-row"><div><strong>气泡显示番茄钟</strong><span>运行时覆盖普通台词</span></div><input type="checkbox" checked={state.settings.pomodoroBubble} onChange={e => update({ pomodoroBubble: e.currentTarget.checked })}/></label>
+    </section>
     <section class="setting-section">
       <h2>外观</h2>
       <div class="setting-row"><div><strong>桌宠尺寸</strong><span>更改后立即生效</span></div><div class="segments">{[150,300,420,500].map(size => <button class={state.settings.size === size ? "active" : ""} onClick={() => update({ size: size as PetSettings["size"] })}>{size}</button>)}</div></div>
@@ -40,6 +53,8 @@ function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => vo
   const [pressed, setPressed] = useState(false);
   const drag = useRef({ x: 0, y: 0, started: false });
   const size = state.settings.size;
+  useEffect(() => { if (!state.pomodoro.running) return; const timer = window.setInterval(() => invoke<PetState>("get_state").then(onState), 1000); return () => clearInterval(timer); }, [state.pomodoro.running]);
+  const pomodoroBubble = state.settings.pomodoroBubble && state.pomodoro.phase !== "idle";
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -71,7 +86,7 @@ function Pet({ state, onState }: { state: PetState; onState: (s: PetState) => vo
   };
 
   return <main class="pet-shell" style={{ width: size, height: size }}>
-    {state.settings.showBubble && <div class="bubble">{bubble}</div>}
+    {state.settings.showBubble && <div class="bubble" onClick={() => pomodoroBubble && invoke<PetState>("pomodoro_action", { action: state.pomodoro.running ? "pause" : "resume" }).then(onState)}>{pomodoroBubble ? `${pomodoroLabel[state.pomodoro.phase]} ${formatTime(state.pomodoro.remainingSeconds)}` : bubble}</div>}
     <canvas ref={canvasRef} class={pressed ? "pressed" : ""}
       onPointerDown={e => { setPressed(true); drag.current = { x: e.clientX, y: e.clientY, started: false }; e.currentTarget.setPointerCapture(e.pointerId); }}
       onPointerMove={async e => { if (!pressed || drag.current.started) return; if (Math.hypot(e.clientX-drag.current.x,e.clientY-drag.current.y)>8) { drag.current.started = true; setPressed(false); await getCurrentWindow().startDragging(); } }}
